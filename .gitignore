@@ -21,3 +21,6 @@ blueapp/
 
 # ---- ZCode 内部文件 ----
 .zcode/
+
+# ---- 结构件 CAD 资料（不入库） ----
+hardware/
