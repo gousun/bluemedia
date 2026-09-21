@@ -15,7 +15,8 @@ ESP32 旋钮 + OLED 的蓝牙媒体遥控器：设备把旋转/按键事件通�
 |---|---|---|
 | `firmware/` | ESP32 固件（ESP-IDF v5.1.2，NimBLE，模式管理/OLED/编码器） | [firmware/README.md](firmware/README.md) |
 | `desktop/` | PC 上位机（Python + pywebview 毛玻璃界面，含自更新） | [desktop/README.md](desktop/README.md) |
-| `hardware/` | 结构件 CAD/STL 资料 | — |
+
+> 结构件 CAD/STL 资料在本地 `hardware/` 目录，不入库。
 
 ## 功能一览
 
