@@ -155,13 +155,29 @@ class Api:
             return {"ok": False, "err": f"{type(e).__name__}: {e}"}
 
 
+def _web_index():
+    """定位 web/index.html：
+    源码模式 → media_gui.py 同级的 web/；
+    PyInstaller 6 onedir → 模块与数据文件都在 _internal/ 下。"""
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(here, "web", "index.html"),
+        os.path.join(HERE, "web", "index.html"),
+        os.path.join(HERE, "_internal", "web", "index.html"),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[-1]
+
+
 def main():
     api = Api()
     api.client.start()
 
     webview.create_window(
         "BlueMedia 媒体控制台",
-        os.path.join(HERE, "web", "index.html"),
+        _web_index(),
         js_api=api,
         width=940,
         height=720,
