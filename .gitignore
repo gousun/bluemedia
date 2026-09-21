@@ -18,3 +18,6 @@ desktop/media_gui_error.log
 # ---- 旧目录（已改名为 firmware/ desktop/，待手动删除） ----
 bluefan_esp/
 blueapp/
+
+# ---- ZCode 内部文件 ----
+.zcode/
