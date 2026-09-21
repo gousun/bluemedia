@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BlueMedia 媒体控制台</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+
+  :root {
+    --ease-apple: cubic-bezier(.32, .72, 0, 1);
+    --glass-bg: rgba(255, 255, 255, .07);
+    --glass-border: rgba(255, 255, 255, .14);
+    --text: #eef2ff;
+    --text-dim: rgba(238, 242, 255, .55);
+    --accent: #6ea8ff;
+  }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    font-family: "Segoe UI Variable Display", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+    color: var(--text);
+    background: #0b1020;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 20px 24px;
+  }
+
+  /* ---------- 背景：缓慢漂移的渐变光斑 ---------- */
+  .bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; background:
+        radial-gradient(1200px 800px at 70% -10%, #16204a 0%, #0b1020 60%); }
+  .blob { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .55; }
+  .b1 { width: 480px; height: 480px; left: -120px; top: -140px;
+        background: radial-gradient(circle at 30% 30%, #2f5cff, transparent 65%);
+        animation: drift1 26s ease-in-out infinite alternate; }
+  .b2 { width: 420px; height: 420px; right: -100px; top: 30%;
+        background: radial-gradient(circle at 60% 40%, #8a4dff, transparent 65%);
+        animation: drift2 32s ease-in-out infinite alternate; }
+  .b3 { width: 380px; height: 380px; left: 30%; bottom: -160px;
+        background: radial-gradient(circle at 50% 50%, #00b8d9, transparent 65%);
+        animation: drift3 38s ease-in-out infinite alternate; }
+  @keyframes drift1 { to { transform: translate(120px, 80px) scale(1.15); } }
+  @keyframes drift2 { to { transform: translate(-100px, -90px) scale(1.1); } }
+  @keyframes drift3 { to { transform: translate(-70px, -60px) scale(1.18); } }
+
+  /* ---------- 毛玻璃面板 ---------- */
+  .glass {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .38), inset 0 1px 0 rgba(255, 255, 255, .10);
+    backdrop-filter: blur(26px) saturate(170%);
+    -webkit-backdrop-filter: blur(26px) saturate(170%);
+  }
+
+  /* ---------- 顶栏 ---------- */
+  .topbar { display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 22px; flex: none; }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 600;
+           letter-spacing: .4px; }
+  .brand .logo { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center;
+                 font-size: 15px;
+                 background: linear-gradient(135deg, #3f7bff, #7a4dff);
+                 box-shadow: 0 6px 18px rgba(80, 110, 255, .45); }
+  .pill { display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px;
+          background: rgba(255, 255, 255, .06); border: 1px solid rgba(255, 255, 255, .10);
+          font-size: 13px; color: var(--text-dim); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #f45b69; transition: background .3s; }
+  .pill.on .dot { background: #3ddc84; box-shadow: 0 0 0 0 rgba(61, 220, 132, .5);
+                  animation: pulse 2s infinite; }
+  .pill.on { color: var(--text); }
+  .pill.upd { cursor: pointer; transition: background .25s, border-color .25s; }
+  .pill.upd:hover { background: rgba(255, 255, 255, .13); }
+  .pill.upd.avail { color: #fff; background: linear-gradient(135deg, rgba(63,123,255,.85), rgba(122,77,255,.85));
+                    border-color: transparent; }
+  .pill.upd.busy { color: var(--text-dim); pointer-events: none; }
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(61, 220, 132, .45); }
+    70%  { box-shadow: 0 0 0 8px rgba(61, 220, 132, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0); }
+  }
+
+  /* ---------- 主面板 ---------- */
+  .main { flex: 1; display: flex; flex-direction: column; padding: 18px 20px 16px; min-height: 0; }
+
+  /* 分段控件（苹果滑动切换） */
+  .seg { position: relative; display: flex; background: rgba(0, 0, 0, .22);
+         border: 1px solid rgba(255, 255, 255, .08); border-radius: 16px; padding: 4px; flex: none; }
+  .seg-thumb { position: absolute; top: 4px; bottom: 4px; left: 0; width: calc(50% - 4px);
+               border-radius: 13px;
+               background: linear-gradient(135deg, rgba(255,255,255,.22), rgba(255,255,255,.10));
+               border: 1px solid rgba(255, 255, 255, .22);
+               box-shadow: 0 8px 22px rgba(0, 0, 0, .30);
+               transition: transform .45s var(--ease-apple); }
+  .seg button { position: relative; z-index: 1; flex: 1; padding: 10px 0; border: 0; background: none;
+                color: var(--text-dim); font-size: 14.5px; font-weight: 600; cursor: pointer;
+                font-family: inherit; transition: color .3s; letter-spacing: .3px; }
+  .seg button.on { color: var(--text); }
+
+  /* 模式视图容器（毛玻璃滑动切换动画） */
+  .views { position: relative; flex: 1; min-height: 0; margin: 16px 0 14px; }
+  .view { position: absolute; inset: 0; display: flex; flex-direction: column;
+          justify-content: center; gap: 18px;
+          opacity: 0; transform: translateX(44px); filter: blur(12px);
+          transition: opacity .4s var(--ease-apple), transform .5s var(--ease-apple),
+                      filter .45s var(--ease-apple);
+          pointer-events: none; }
+  .view.active { opacity: 1; transform: none; filter: blur(0); pointer-events: auto; }
+  .view.left  { transform: translateX(-44px); }
+
+  .actions { display: flex; gap: 16px; justify-content: center; }
+  .abtn { flex: 1; max-width: 250px; padding: 22px 0 18px; border-radius: 20px;
+          background: rgba(255, 255, 255, .06);
+          border: 1px solid rgba(255, 255, 255, .13);
+          display: flex; flex-direction: column; align-items: center; gap: 8px;
+          cursor: pointer; transition: transform .18s var(--ease-apple), background .25s,
+          box-shadow .25s; font-family: inherit; color: var(--text); }
+  .abtn:hover { background: rgba(255, 255, 255, .10); transform: translateY(-2px);
+                box-shadow: 0 14px 34px rgba(0, 0, 0, .30); }
+  .abtn:active { transform: scale(.96); }
+  .abtn .ico { font-size: 30px; line-height: 1; }
+  .abtn .lbl { font-size: 13.5px; color: var(--text-dim); }
+  .abtn.primary .ico { filter: drop-shadow(0 0 14px rgba(110, 168, 255, .65)); }
+
+  .tip { text-align: center; font-size: 12.5px; color: var(--text-dim); }
+
+  /* 音量行 */
+  .volrow { display: flex; align-items: center; gap: 14px; padding: 14px 18px;
+            border-radius: 18px; background: rgba(0, 0, 0, .18);
+            border: 1px solid rgba(255, 255, 255, .08); flex: none; }
+  .volrow .vico { font-size: 18px; flex: none; }
+  .volrow input[type=range] { flex: 1; -webkit-appearance: none; height: 6px; border-radius: 4px;
+        background: linear-gradient(to right, var(--accent) var(--fill, 50%),
+                    rgba(255, 255, 255, .14) var(--fill, 50%)); outline: none; cursor: pointer; }
+  .volrow input[type=range]::-webkit-slider-thumb {
+        -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+        background: #fff; box-shadow: 0 4px 14px rgba(0, 0, 0, .45);
+        border: 4px solid rgba(110, 168, 255, .9); transition: transform .15s; }
+  .volrow input[type=range]:active::-webkit-slider-thumb { transform: scale(1.15); }
+  .volrow .vnum { width: 44px; text-align: right; font-size: 15px; font-weight: 600;
+                  font-variant-numeric: tabular-nums; flex: none; }
+
+  /* ---------- 日志 ---------- */
+  .logpanel { height: 158px; flex: none; display: flex; flex-direction: column;
+              padding: 12px 16px 10px; }
+  .loghead { font-size: 12.5px; color: var(--text-dim); letter-spacing: 1px;
+             margin-bottom: 8px; flex: none; }
+  .log { flex: 1; overflow-y: auto; font-family: Consolas, monospace; font-size: 12px;
+         line-height: 1.75; color: var(--text-dim); user-select: text; }
+  .log::-webkit-scrollbar { width: 6px; }
+  .log::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .15); border-radius: 4px; }
+  .log .ev { animation: slidein .3s var(--ease-apple); color: #cdd9ff; }
+  .log .warn { animation: slidein .3s var(--ease-apple); color: #ffc46b; }
+  @keyframes slidein { from { opacity: 0; transform: translateY(6px); } }
+
+  .offline .actions, .offline .volrow { opacity: .45; transition: opacity .3s; }
+
+  /* ---------- 自定义模式编辑弹窗 ---------- */
+  .overlay { position: fixed; inset: 0; background: rgba(5, 8, 20, .58);
+             backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+             display: none; align-items: center; justify-content: center; z-index: 50; }
+  .overlay.show { display: flex; animation: fadein .25s ease; }
+  @keyframes fadein { from { opacity: 0; } }
+  .dialog { width: 480px; max-width: 94vw; padding: 22px 24px 18px; border-radius: 22px;
+            animation: pop .35s var(--ease-apple); }
+  @keyframes pop { from { opacity: 0; transform: translateY(26px) scale(.96); filter: blur(6px); } }
+  .dialog h3 { font-size: 16px; margin-bottom: 4px; }
+  .dlabel { font-size: 12.5px; color: var(--text-dim); margin: 12px 0 6px; }
+  .dinput { width: 100%; padding: 10px 12px; border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, .15); background: rgba(0, 0, 0, .25);
+            color: var(--text); font-size: 14px; outline: none; font-family: inherit;
+            letter-spacing: 1px; }
+  .dinput:focus { border-color: var(--accent); }
+  .brow { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .brow .blab { width: 46px; font-size: 13px; color: var(--text-dim); flex: none; }
+  .brow select { flex: 1; padding: 9px 10px; border-radius: 12px;
+                 border: 1px solid rgba(255, 255, 255, .15); background: rgba(0, 0, 0, .25);
+                 color: var(--text); font-size: 13px; outline: none; font-family: inherit; }
+  .brow select option, .brow select optgroup { background: #141a30; color: var(--text); }
+  .brow .cap { flex: none; padding: 9px 12px; border-radius: 12px;
+               border: 1px solid rgba(255, 255, 255, .15); background: rgba(255, 255, 255, .07);
+               color: var(--text); cursor: pointer; font-size: 12.5px; font-family: inherit;
+               transition: background .2s; }
+  .brow .cap.capturing { background: var(--accent); color: #fff; border-color: transparent; }
+  .dhint { font-size: 11.5px; color: var(--text-dim); margin-top: 10px; line-height: 1.7; }
+  .dhint.err { color: #ff8b8b; }
+  .dbtns { display: flex; gap: 10px; margin-top: 16px; }
+  .dbtns button { flex: 1; padding: 11px 0; border-radius: 14px;
+                  border: 1px solid rgba(255, 255, 255, .15); background: rgba(255, 255, 255, .08);
+                  color: var(--text); font-size: 14px; cursor: pointer; font-family: inherit;
+                  transition: transform .15s var(--ease-apple), background .2s; }
+  .dbtns button.primary { background: linear-gradient(135deg, #3f7bff, #7a4dff);
+                          border: 0; font-weight: 600; }
+  .dbtns button:hover { transform: translateY(-1px); }
+</style>
+</head>
+<body>
+  <div class="bg"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+
+  <header class="glass topbar">
+    <div class="brand"><span class="logo">🎵</span> BlueMedia <span style="font-weight:400;color:var(--text-dim);font-size:13px">媒体控制台</span></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="pill upd" id="updPill" onclick="onUpdateClick()"><span id="updText">⟳ 检查更新</span></div>
+      <div class="pill" id="connPill"><span class="dot"></span><span id="connText">连接中…</span></div>
+    </div>
+  </header>
+
+  <main class="glass main">
+    <div class="seg" id="seg">
+      <div class="seg-thumb" id="segThumb"></div>
+      <!-- 模式按钮由 JS 生成 -->
+    </div>
+
+    <div class="views" id="views">
+      <!-- 模式视图由 JS 生成 -->
+    </div>
+
+    <div class="volrow" id="volRow">
+      <span class="vico">🔊</span>
+      <input type="range" id="vol" min="0" max="100" value="0">
+      <span class="vnum" id="volNum">--</span>
+    </div>
+  </main>
+
+  <section class="glass logpanel">
+    <div class="loghead">事 件 日 志</div>
+    <div class="log" id="log"></div>
+  </section>
+
+  <div class="overlay" id="editorOverlay">
+    <div class="glass dialog">
+      <h3>编辑自定义模式 <span id="edTitle" style="color:var(--accent)"></span></h3>
+      <div class="dlabel">模式名（1~6位英文/数字/符号，将同步显示在设备 OLED）</div>
+      <input class="dinput" id="edName" maxlength="6" placeholder="如 GAME / PPT">
+      <div class="dlabel">手势映射</div>
+      <div class="brow"><span class="blab">短按</span><select id="edSingle"></select>
+        <button class="cap" onclick="startCapture('edSingle')">🎯捕获</button></div>
+      <div class="brow"><span class="blab">双击</span><select id="edDouble"></select>
+        <button class="cap" onclick="startCapture('edDouble')">🎯捕获</button></div>
+      <div class="brow"><span class="blab">旋转↑</span><select id="edRotUp"></select>
+        <button class="cap" onclick="startCapture('edRotUp')">🎯捕获</button></div>
+      <div class="brow"><span class="blab">旋转↓</span><select id="edRotDown"></select>
+        <button class="cap" onclick="startCapture('edRotDown')">🎯捕获</button></div>
+      <div class="dhint" id="edHint">捕获：点击后按下键盘任意键（组合键也可）；媒体键请用下拉选择。鼠标键在光标当前位置点击。</div>
+      <div class="dbtns">
+        <button class="primary" onclick="saveEditor()">保存并同步设备</button>
+        <button onclick="closeEditor()">取消</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const api = () => window.pywebview.api;
+
+let S = { modes: [], mode: 1, connected: false, hasPycaw: true };
+let volDragging = false, volTimer = null, polling = false;
+
+function ts() { return new Date().toTimeString().slice(0, 8); }
+
+function addLog(text, cls) {
+  const box = $("log");
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = `[${ts()}] ${text}`;
+  box.appendChild(line);
+  while (box.children.length > 150) box.removeChild(box.firstChild);
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ---------- 构建界面 ---------- */
+function buildUI() {
+  const seg = $("seg"), views = $("views");
+  seg.querySelectorAll("button").forEach(b => b.remove());
+  views.innerHTML = "";
+
+  S.modes.forEach((m, idx) => {
+    const btn = document.createElement("button");
+    btn.textContent = m.name;
+    btn.className = m.id === S.mode ? "on" : "";
+    btn.onclick = () => { api().set_mode(m.id); setView(m.id); };
+    seg.appendChild(btn);
+
+    const v = document.createElement("section");
+    v.className = "view" + (m.id === S.mode ? " active" : "");
+    v.id = "view-" + m.id;
+    const ui = m.ui || {};
+    const editBtn = m.custom
+      ? `<button class="abtn" onclick="openEditor(${m.id})">
+           <span class="ico">⚙</span><span class="lbl">编辑名字与映射</span>
+         </button>` : "";
+    v.innerHTML = `
+      <div class="actions">
+        <button class="abtn primary" onclick="api().manual('EV:KEY:S')">
+          <span class="ico">⏯</span><span class="lbl">短按 · ${ui.single || "-"}</span>
+        </button>
+        <button class="abtn" onclick="api().manual('EV:KEY:D')">
+          <span class="ico">⏭</span><span class="lbl">双击 · ${ui.double || "-"}</span>
+        </button>
+        ${editBtn}
+      </div>
+      <div class="tip">设备旋钮同样触发：短按 = ${ui.single || "-"}　双击 = ${ui.double || "-"}　旋转 = ${ui.rot || "音量"}</div>`;
+    views.appendChild(v);
+  });
+  // thumb 宽度随槽数自适应，位置随索引
+  $("segThumb").style.width = `calc((100% - 8px) / ${S.modes.length})`;
+  const idx = S.modes.findIndex(m => m.id === S.mode);
+  $("segThumb").style.transform = `translateX(${idx * 100}%)`;
+}
+
+function setView(modeId) {
+  S.mode = modeId;
+  const idx = S.modes.findIndex(m => m.id === modeId);
+  $("segThumb").style.transform = `translateX(${idx * 100}%)`;
+  $("seg").querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === idx));
+  $("views").querySelectorAll(".view").forEach(v => {
+    const vIdx = S.modes.findIndex(m => "view-" + m.id === v.id);
+    v.classList.toggle("active", v.id === "view-" + modeId);
+    v.classList.toggle("left", vIdx < idx);   // 让"上一位"视图向左滑出
+  });
+}
+
+/* ---------- 连接状态 ---------- */
+function renderConn() {
+  const pill = $("connPill");
+  pill.classList.toggle("on", S.connected);
+  $("connText").textContent = S.connected ? "已连接设备" : "未连接，自动重试中…";
+  document.body.classList.toggle("offline", !S.connected);
+}
+
+/* ---------- 音量 ---------- */
+function setVolUI(v, fromSlider) {
+  if (v == null) { $("volNum").textContent = "--"; return; }
+  $("volNum").textContent = v + "%";
+  const slider = $("vol");
+  slider.style.setProperty("--fill", v + "%");
+  if (!fromSlider) slider.value = v;
+}
+
+$("vol").addEventListener("input", e => {
+  const v = +e.target.value;
+  setVolUI(v, true);
+  if (S.hasPycaw) {
+    clearTimeout(volTimer);
+    volTimer = setTimeout(() => api().set_volume(v), 120);
+  }
+});
+$("vol").addEventListener("pointerdown", () => volDragging = true);
+window.addEventListener("pointerup", () => volDragging = false);
+
+/* ---------- 自定义模式编辑器 ---------- */
+const BINDING_GROUPS = [
+  ["常用快捷键", [["combo:ctrl+c", "复制 Ctrl+C"], ["combo:ctrl+v", "粘贴 Ctrl+V"],
+    ["combo:ctrl+x", "剪切 Ctrl+X"], ["combo:ctrl+z", "撤销 Ctrl+Z"], ["combo:ctrl+s", "保存 Ctrl+S"],
+    ["combo:ctrl+w", "关闭标签 Ctrl+W"], ["combo:alt+tab", "切换窗口 Alt+Tab"],
+    ["combo:win+d", "显示桌面 Win+D"], ["key:f5", "刷新 F5"], ["key:escape", "Esc"],
+    ["key:page_up", "上一页 PgUp"], ["key:page_down", "下一页 PgDn"]]],
+  ["媒体键（全局生效）", [["key:media_play_pause", "播放/暂停"], ["key:media_next", "下一首"],
+    ["key:media_previous", "上一首"], ["key:media_volume_up", "音量 +"],
+    ["key:media_volume_down", "音量 -"], ["key:media_mute", "静音"]]],
+  ["键盘按键", [["key:space", "空格"], ["key:enter", "回车"], ["key:tab", "Tab"],
+    ["key:up", "方向 ↑"], ["key:down", "方向 ↓"], ["key:left", "方向 ←"], ["key:right", "方向 →"],
+    ["key:delete", "Delete"], ["key:backspace", "退格"], ["key:home", "Home"], ["key:end", "End"],
+    ["key:insert", "Insert"], ["char:a", "字母 A"], ["char:z", "字母 Z"], ["char:0", "数字 0"]]],
+  ["鼠标（在光标位置点击）", [["mouse:left", "鼠标左键"], ["mouse:right", "鼠标右键"],
+    ["mouse:middle", "鼠标中键"], ["mouse:x1", "鼠标侧键 1"], ["mouse:x2", "鼠标侧键 2"]]],
+];
+const CODE_MAP = { " ": "space", Enter: "enter", Escape: "esc", Tab: "tab",
+  ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right",
+  Delete: "delete", Backspace: "backspace", Home: "home", End: "end",
+  PageUp: "page_up", PageDown: "page_down", Insert: "insert" };
+const KEY_LABELS_JS = { space: "空格", enter: "回车", esc: "Esc", up: "↑", down: "↓",
+  left: "←", right: "→", delete: "Delete", backspace: "退格", page_up: "PgUp", page_down: "PgDn",
+  home: "Home", end: "End", insert: "Insert", media_play_pause: "播放/暂停", media_next: "下一首",
+  media_previous: "上一首", media_volume_up: "音量+", media_volume_down: "音量-", media_mute: "静音" };
+
+let editorMode = null, captureTarget = null;
+
+function fillBindingSelect(sel, value) {
+  sel.innerHTML = "";
+  sel.appendChild(new Option("未设置", ""));
+  for (const [group, opts] of BINDING_GROUPS) {
+    const og = document.createElement("optgroup");
+    og.label = group;
+    for (const [val, label] of opts) og.appendChild(new Option(label, val));
+    sel.appendChild(og);
+  }
+  if (value) ensureOption(sel, value);
+  sel.value = value || "";
+}
+
+function ensureOption(sel, value) {
+  if (![...sel.options].some(o => o.value === value)) {
+    sel.appendChild(new Option("已捕获: " + jsDescribe(value), value));
+  }
+}
+
+function jsDescribe(b) {
+  if (!b) return "未设置";
+  const [kind, , val] = splitColon(b);
+  if (kind === "key") return KEY_LABELS_JS[val] || val;
+  if (kind === "char") return "按键 " + val.toUpperCase();
+  if (kind === "mouse") return "鼠标·" + val;
+  if (kind === "combo") {
+    const parts = val.split("+");
+    return parts.map(p => KEY_LABELS_JS[p] || p.toUpperCase()).join("+");
+  }
+  return b;
+}
+function splitColon(s) { const i = s.indexOf(":"); return i < 0 ? [s, "", ""] : [s.slice(0, i), ":", s.slice(i + 1)]; }
+
+function openEditor(modeId) {
+  const entry = S.modes.find(m => m.id === modeId);
+  if (!entry || !entry.custom) return;
+  editorMode = modeId;
+  $("edTitle").textContent = `#${modeId}`;
+  $("edName").value = (entry.cfg && entry.cfg.name) || "";
+  fillBindingSelect($("edSingle"), entry.cfg.single);
+  fillBindingSelect($("edDouble"), entry.cfg.double);
+  fillBindingSelect($("edRotUp"), entry.cfg.rot_up);
+  fillBindingSelect($("edRotDown"), entry.cfg.rot_down);
+  setHint("");
+  $("editorOverlay").classList.add("show");
+}
+
+function closeEditor() {
+  captureTarget = null;
+  document.querySelectorAll(".cap").forEach(b => b.classList.remove("capturing"));
+  $("editorOverlay").classList.remove("show");
+}
+
+function startCapture(selectId) {
+  captureTarget = document.getElementById(selectId);
+  document.querySelectorAll(".cap").forEach(b => b.classList.toggle("capturing",
+    b.getAttribute("onclick").includes(selectId)));
+  setHint("请按下要映射的按键（组合键可按住修饰键再按；Esc 取消捕获）…");
+}
+
+window.addEventListener("keydown", e => {
+  if (!captureTarget) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === "Escape" && !e.ctrlKey && !e.altKey && !e.metaKey) { stopCapture(); setHint(""); return; }
+  const mods = [];
+  if (e.ctrlKey) mods.push("ctrl");
+  if (e.altKey) mods.push("alt");
+  if (e.shiftKey) mods.push("shift");
+  if (e.metaKey) mods.push("win");
+  let k = CODE_MAP[e.key] || (/^F\d{1,2}$/.test(e.key) ? e.key.toLowerCase() : null);
+  const isChar = !k && e.key.length === 1;
+  if (!k && !isChar) return;                       // 无法识别的键忽略
+  let binding;
+  const realMods = mods.filter(p => !(p === "shift" && isChar));
+  if (realMods.length) binding = `combo:${[...realMods, k || e.key.toLowerCase()].join("+")}`;
+  else if (isChar) binding = `char:${e.key}`;
+  else binding = `key:${k}`;
+  ensureOption(captureTarget, binding);
+  captureTarget.value = binding;
+  setHint(`已捕获 → ${jsDescribe(binding)}`);
+  stopCapture();
+});
+function stopCapture() {
+  captureTarget = null;
+  document.querySelectorAll(".cap").forEach(b => b.classList.remove("capturing"));
+}
+function setHint(text, isErr) {
+  const h = $("edHint");
+  h.textContent = text || "捕获：点击后按下键盘任意键（组合键可按住修饰键再按）；媒体键请用下拉选择。鼠标键在光标当前位置点击。";
+  h.classList.toggle("err", !!isErr);
+}
+
+async function saveEditor() {
+  const name = $("edName").value.trim();
+  if (!/^[!-~]([ -~]{0,4}[!-~])?$/.test(name)) {
+    setHint("名字需为 1~6 位英文/数字/符号（不含空格开头结尾）", true);
+    return;
+  }
+  const bindings = { single: $("edSingle").value, double: $("edDouble").value,
+                     rot_up: $("edRotUp").value, rot_down: $("edRotDown").value };
+  const res = await api().save_custom(editorMode, name, bindings);
+  if (res && res.ok) {
+    addLog(`自定义模式 ${res.name} 已保存并同步设备`, "ev");
+    closeEditor();
+    S = Object.assign(S, await api().state());   // 刷新模式名/文案
+    buildUI();
+    setView(S.mode);
+  } else {
+    setHint("保存失败: " + (res && res.err || "?"), true);
+  }
+}
+
+/* ---------- 轮询 ---------- */
+async function poll() {
+  if (polling) return;
+  polling = true;
+  try {
+    const d = await api().poll();
+    for (const [kind, payload] of d.events) {
+      if (kind === "event")      addLog(`设备事件 <== ${payload}`, "ev");
+      else if (kind === "status") {
+        addLog(`设备状态 <== ${JSON.stringify(payload)}`);
+        try { if (payload.volok && !volDragging) setVolUI(payload.vol, false); } catch {}
+      }
+      else if (kind === "conn")   addLog(payload[0] ? `已连接 ${payload[1]}` : `连接断开（${payload[1]}）`, payload[0] ? "ev" : "warn");
+      else if (kind === "log")    addLog(payload, "warn");
+    }
+    if (d.connected !== S.connected) { S.connected = d.connected; renderConn(); }
+    if (d.mode !== S.mode) setView(d.mode);
+    if (!volDragging) setVolUI(d.volume, false);
+  } catch (e) { /* 窗口关闭等瞬时错误忽略 */ }
+  polling = false;
+}
+
+/* ---------- 自更新 ---------- */
+let lastUpdate = null;
+
+function setUpdText(t, cls) {
+  $("updText").textContent = t;
+  const pill = $("updPill");
+  pill.classList.toggle("avail", cls === "avail");
+  pill.classList.toggle("busy", cls === "busy");
+}
+
+async function onUpdateClick() {
+  if (lastUpdate && lastUpdate.available) {
+    if (!confirm(`发现新版本 ${lastUpdate.latest}（当前 v${lastUpdate.current}）。\n将下载更新包并自动重启，继续？`)) return;
+    setUpdText("下载更新中...", "busy");
+    const res = await api().apply_update();
+    if (res && res.ok) {
+      setUpdText("更新完成，重启中...", "busy");
+      addLog(`已更新到 ${res.latest}，应用即将重启`, "ev");
+    } else {
+      setUpdText("更新失败，点击重试", "avail");
+      addLog("更新失败: " + (res && res.err || "?"), "warn");
+    }
+    return;
+  }
+  setUpdText("检查中...", "busy");
+  await checkUpdate(false);
+}
+
+async function checkUpdate(silent) {
+  try {
+    const r = await api().check_update();
+    lastUpdate = r;
+    if (r.error) {
+      setUpdText("v" + r.current);
+      if (!silent) addLog("检查更新失败: " + r.error, "warn");
+      return;
+    }
+    if (r.available) {
+      setUpdText(`发现新版 ${r.latest} ⟳ 点击更新`, "avail");
+      addLog(`发现新版本 ${r.latest}（当前 v${r.current}），点击右上角更新`, "ev");
+    } else {
+      setUpdText("v" + r.current + " 已是最新");
+      if (!silent) addLog("当前已是最新版本 v" + r.current);
+    }
+  } catch (e) { setUpdText("v? 检查失败"); }
+}
+
+/* ---------- 启动 ---------- */
+window.addEventListener("pywebviewready", async () => {
+  S = Object.assign(S, await api().state());
+  buildUI();
+  renderConn();
+  addLog("控制台已启动，等待设备...");
+  setInterval(poll, 250);
+  setTimeout(() => checkUpdate(true), 2500);   //启动后自动检查一次更新
+});
+</script>
+</body>
+</html>

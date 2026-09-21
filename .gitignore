@@ -1,0 +1,20 @@
+# ---- 构建产物 ----
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+desktop/build/
+desktop/dist/
+desktop/__pycache__/
+__pycache__/
+*.pyc
+
+# ---- 用户本地数据 ----
+desktop/user_modes.json
+desktop/media_gui_error.log
+
+# ---- 压缩包（原始资料备份不入库） ----
+*.zip
+
+# ---- 旧目录（已改名为 firmware/ desktop/，待手动删除） ----
+bluefan_esp/
+blueapp/
